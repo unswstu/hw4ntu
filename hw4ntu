@@ -1,0 +1,37 @@
+import org.apache.spark.ml.classification.LogisticRegression
+
+// Load training data
+val training = spark.read.format("libsvm").load("/Users/jiahao/Desktop/BIC-2/sample_libsvm_data.txt")
+
+val lr = new LogisticRegression()
+  .setMaxIter(10)
+  .setRegParam(0.3)
+  .setElasticNetParam(0.8)
+
+val seed = 5043
+val Array(trainingData, testData) = training.randomSplit(Array(0.7, 0.3), seed)
+
+// Fit the model
+val lrModel = lr.fit(trainingData)
+
+val predictionDf = lrModel.transform(testData)
+predictionDf.show(10)
+
+val trainingSummary = lrModel.binarySummary
+
+// Obtain the objective per iteration.
+val objectiveHistory = trainingSummary.objectiveHistory
+println("objectiveHistory:")
+objectiveHistory.foreach(loss => println(loss))
+
+// Obtain the receiver-operating characteristic as a dataframe and areaUnderROC.
+val roc = trainingSummary.roc
+roc.show()
+println(s"areaUnderROC: ${trainingSummary.areaUnderROC}")
+
+// Set the model threshold to maximize F-Measure
+val fMeasure = trainingSummary.fMeasureByThreshold
+val maxFMeasure = fMeasure.select(max("F-Measure")).head().getDouble(0)
+val bestThreshold = fMeasure.where($"F-Measure" === maxFMeasure)
+  .select("threshold").head().getDouble(0)
+lrModel.setThreshold(bestThreshold)
